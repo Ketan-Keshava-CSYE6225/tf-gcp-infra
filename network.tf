@@ -1,7 +1,7 @@
 provider "google" {
   credentials = file(var.service_account_file_path)
   project     = var.prj_id
-  cloud_region      = var.cloud_region
+  region      = var.cloud_region
 }
 
 resource "google_compute_network" "vpc" {
