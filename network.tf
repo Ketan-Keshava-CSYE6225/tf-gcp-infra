@@ -2,7 +2,7 @@ provider "google" {
   credentials = file(var.service_account_file_path)
   project     = var.prj_id
   region      = var.cloud_region
-}
+
 
 # Loop through the list of VPC configurations and create VPCs
 resource "google_compute_network" "vpc" {
