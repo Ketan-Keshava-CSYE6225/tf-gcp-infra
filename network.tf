@@ -171,12 +171,14 @@ set -e
 sudo touch /opt/csye6225/webapp/.env
 
 sudo echo "PORT=${var.env_port}" > /opt/csye6225/webapp/.env
-sudo echo "DATABASE_NAME=${var.vm_instances[count.index].database_name}" >> /opt/csye6225/webapp/.env
-sudo echo "DATABASE_USERNAME=${var.vm_instances[count.index].database_user_name}" >> /opt/csye6225/webapp/.env
-sudo echo "DATABASE_PASSWORD=${random_password.webapp_db_password.result}" >> /opt/csye6225/webapp/.env
-sudo echo "DATABASE_HOST=${google_sql_database_instance.cloud_sql_instance[count.index].private_ip_address}" >> /opt/csye6225/webapp/.env
-sudo echo "DATABASE_DIALECT=${var.env_db_dialect}" >> /opt/csye6225/webapp/.env
-sudo echo "DROP_DATABASE=${var.env_db_drop_db}" >> /opt/csye6225/webapp/.env
+sudo echo "DB_NAME=${var.vm_instances[count.index].database_name}" >> /opt/csye6225/webapp/.env
+sudo echo "DB_USERNAME=${var.vm_instances[count.index].database_user_name}" >> /opt/csye6225/webapp/.env
+sudo echo "DB_PASSWORD=${random_password.webapp_db_password.result}" >> /opt/csye6225/webapp/.env
+sudo echo "DB_HOST=${google_sql_database_instance.cloud_sql_instance[count.index].ip_address.0.ip_address}" >> /opt/csye6225/webapp/.env
+sudo echo "DB_DIALECT=${var.env_db_dialect}" >> /opt/csye6225/webapp/.env
+sudo echo "DROP_DB=${var.env_db_drop_db}" >> /opt/csye6225/webapp/.env
+
+sudo systemctl restart webapp
 
 sudo systemctl daemon-reload
 EOT
