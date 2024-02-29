@@ -49,6 +49,24 @@ resource "google_compute_firewall" "allow_ssh_from_iap" {
 
   source_ranges = var.vm_instances[count.index].src_ranges
   target_tags   = var.vm_instances[count.index].tags
+
+  priority = 1000
+}
+
+resource "google_compute_firewall" "deny_all" {
+  count   = length(var.vm_instances)
+  name    = "deny-all-${count.index}"
+  network = google_compute_network.vpc[count.index].name
+
+  deny {
+    protocol = "all"
+    ports    = []
+  }
+
+  source_ranges = var.vm_instances[count.index].src_ranges
+  target_tags   = var.vm_instances[count.index].tags
+
+  priority = 2000
 }
 
 resource "google_compute_instance" "webapp_instance" {
@@ -76,7 +94,7 @@ resource "google_compute_instance" "webapp_instance" {
 
 
   tags       = var.vm_instances[count.index].tags
-  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_ssh_from_iap]
+  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_ssh_from_iap, google_compute_firewall.deny_all]
 
 }
 
