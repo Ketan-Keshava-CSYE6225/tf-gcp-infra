@@ -271,7 +271,7 @@ variable "vm_instances" {
     vpc_db_subnet_name                      = string
     vpc_db_subnet_cidr                      = string
     vpc_routing_mode                        = string
-    vpc_dest_range                              = string
+    vpc_dest_range                          = string
     auto_create_subnetworks                 = bool
     delete_default_routes_on_create         = bool
     next_hop_gateway                        = string
