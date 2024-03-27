@@ -66,14 +66,9 @@ resource "google_service_networking_connection" "private_vpc_connection" {
   depends_on = [google_compute_network.vpc, google_compute_global_address.private_ip_address]
 }
 
-locals {
-  count                     = length(var.vm_instances)
-  current_timestamp_seconds = formatdate("YYYYMMDDhhmmss", timestamp())
-}
-
 resource "google_sql_database_instance" "cloud_sql_instance" {
   count               = length(var.vm_instances)
-  name                = "private-sql-instance-${local.current_timestamp_seconds}"
+  name                = "private-sql-instance"
   region              = var.vm_instances[count.index].region
   database_version    = var.vm_instances[count.index].postgres_database_version
   root_password       = var.vm_instances[count.index].postgres_root_password
@@ -229,6 +224,8 @@ sudo echo "DB_PASSWORD=${random_password.webapp_db_password[count.index].result}
 sudo echo "DB_HOST=${google_sql_database_instance.cloud_sql_instance[count.index].ip_address.0.ip_address}" >> /opt/csye6225/webapp/.env
 sudo echo "DB_DIALECT=${var.env_db_dialect}" >> /opt/csye6225/webapp/.env
 sudo echo "DROP_DB=${var.env_db_drop_db}" >> /opt/csye6225/webapp/.env
+sudo echo "TOPIC_VERIFY_EMAIL=${var.env_topic_verify_email}" >> /opt/csye6225/webapp/.env
+sudo echo "VERIFY_EMAIL_EXPIRY_MILLISECONDS=${var.env_verify_email_expiry_milliseconds}" >> /opt/csye6225/webapp/.env
 
 sudo systemctl daemon-reload
 sudo systemctl restart webapp
@@ -355,4 +352,14 @@ variable "service_account_logging_admin_role" {
 variable "service_account_monitoring_metric_writer_role" {
   description = "Service Account Monitoring Metric Writer Role"
   type        = string
+}
+
+variable "env_topic_verify_email" {
+  description = "Env Topic Verify Email"
+  type        = string
+}
+
+variable "env_verify_email_expiry_milliseconds" {
+  description = "Env Verify Email Expiry Milliseconds"
+  type        = number
 }
