@@ -376,7 +376,7 @@ resource "google_sql_database_instance" "webapp_cloudsql_instance" {
 
   }
 
-  depends_on = [google_compute_network.vpc, google_service_networking_connection.private_vpc_connection, google_pubsub_subscription.verify_email_subscription, google_pubsub_topic_iam_binding.verify_email_topic_binding]
+  depends_on = [google_compute_network.vpc, google_service_networking_connection.private_vpc_connection, google_pubsub_subscription.verify_email_subscription, google_pubsub_topic_iam_binding.verify_email_topic_binding, google_kms_crypto_key.webapp_sql_crypto_key]
 }
 
 resource "google_sql_database" "webapp_db" {
@@ -579,7 +579,7 @@ EOT
     gce-service-proxy = var.webapp_instance_template.labels_gce_service_proxy
   } // not required
 
-  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_iap, google_compute_firewall.deny_all, google_sql_database.webapp_db, google_sql_user.webapp_db_user, google_project_iam_binding.service_account_logging_admin, google_project_iam_binding.service_account_monitoring_metric_writer, google_pubsub_topic.verify_email_topic, google_pubsub_subscription.verify_email_subscription, google_vpc_access_connector.serverless_connector, google_compute_firewall.health_check_firewall]
+  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_iap, google_compute_firewall.deny_all, google_sql_database.webapp_db, google_sql_user.webapp_db_user, google_project_iam_binding.service_account_logging_admin, google_project_iam_binding.service_account_monitoring_metric_writer, google_pubsub_topic.verify_email_topic, google_pubsub_subscription.verify_email_subscription, google_vpc_access_connector.serverless_connector, google_compute_firewall.health_check_firewall, google_kms_crypto_key.webapp_vm_crypto_key]
 }
 
 resource "google_compute_health_check" "webapp_autohealing" {
