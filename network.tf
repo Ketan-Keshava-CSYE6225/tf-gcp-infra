@@ -3,6 +3,11 @@ provider "google" {
   project     = var.project_id
 }
 
+provider "google-beta" {
+  credentials = file(var.service_account_file_path)
+  project     = var.project_id
+}
+
 resource "google_service_account" "service_account" {
   account_id                   = var.service_account.account_id
   display_name                 = var.service_account.display_name
@@ -113,6 +118,89 @@ resource "google_compute_subnetwork" "db" {
   private_ip_google_access = var.vpc_subnet_db.enable_private_ip_google_access
 
   depends_on = [google_compute_network.vpc]
+}
+
+resource "google_project_service_identity" "service_identity_account" {
+  provider = google-beta
+  project  = var.project_id
+  service  = var.service_identity_account.service
+}
+
+resource "random_string" "key_ring_name" {
+  length  = var.key_ring_name.length
+  special = var.key_ring_name.special
+}
+resource "google_kms_key_ring" "example" {
+  name     = random_string.key_ring_name.result
+  location = var.region
+}
+resource "google_kms_key_ring" "webapp_key_ring" {
+  project  = var.project_id
+  location = var.region
+  name     = "webapp-key-${random_string.key_ring_name.result}"
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+resource "google_kms_crypto_key" "webapp_vm_crypto_key" {
+  name            = "webapp-vm-key"
+  key_ring        = google_kms_key_ring.webapp_key_ring.id
+  rotation_period = var.key_rotation_period
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+resource "google_kms_crypto_key" "webapp_sql_crypto_key" {
+  name            = "webapp-sql-key"
+  key_ring        = google_kms_key_ring.webapp_key_ring.id
+  rotation_period = var.key_rotation_period
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+resource "google_kms_crypto_key" "cloudstorage_crypto_key" {
+  name            = "webapp-storage-key"
+  key_ring        = google_kms_key_ring.webapp_key_ring.id
+  rotation_period = var.key_rotation_period
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+resource "google_kms_crypto_key_iam_binding" "vm_binding" {
+  crypto_key_id = google_kms_crypto_key.webapp_vm_crypto_key.id
+  role          = var.roles.kms_crypto_key_encrypter_decrypter_role
+  members       = ["serviceAccount:${var.vm_binding_service_account}"]
+  depends_on    = [google_kms_crypto_key.webapp_vm_crypto_key]
+}
+resource "google_kms_crypto_key_iam_binding" "cloudsql_binding" {
+  crypto_key_id = google_kms_crypto_key.webapp_sql_crypto_key.id
+  role          = var.roles.kms_crypto_key_encrypter_decrypter_role
+  members       = ["serviceAccount:${google_project_service_identity.service_identity_account.email}"]
+  depends_on    = [google_kms_crypto_key.webapp_sql_crypto_key]
+}
+resource "google_kms_crypto_key_iam_binding" "storage_binding" {
+  crypto_key_id = google_kms_crypto_key.cloudstorage_crypto_key.id
+  role          = var.roles.kms_crypto_key_encrypter_decrypter_role
+  members       = ["serviceAccount:${var.storage_binding_service_account}"]
+  depends_on    = [google_kms_crypto_key.cloudstorage_crypto_key]
+}
+
+resource "google_storage_bucket" "auto-expire" {
+  name          = var.google_storage_bucket.name //var.function_bucket
+  location      = var.region
+  force_destroy = var.google_storage_bucket.force_destroy
+
+  public_access_prevention = var.google_storage_bucket.public_access_prevention
+  encryption {
+    default_kms_key_name = google_kms_crypto_key.cloudstorage_crypto_key.id
+  }
+  depends_on = [google_kms_crypto_key.cloudstorage_crypto_key,
+  google_kms_crypto_key_iam_binding.storage_binding]
+}
+resource "google_storage_bucket_object" "object" {
+  name   = var.google_storage_bucket_object_zip
+  bucket = google_storage_bucket.auto-expire.name
+  source = "./.terraform/${var.google_storage_bucket_object_zip}" # Add path to the zipped function source code
 }
 
 resource "google_compute_route" "webapp_route" {
@@ -268,6 +356,7 @@ resource "google_sql_database_instance" "webapp_cloudsql_instance" {
   region              = var.database.region
   deletion_protection = var.database.deletion_protection
   root_password       = var.database.root_password
+  encryption_key_name = google_kms_crypto_key.webapp_sql_crypto_key.id
 
   settings {
     tier              = var.database.tier
@@ -352,8 +441,8 @@ resource "google_cloudfunctions2_function" "function" {
     }
     source {
       storage_source {
-        bucket = var.cloud_function.build_config.source_bucket
-        object = var.cloud_function.build_config.source_object
+        bucket = google_storage_bucket.auto-expire.name
+        object = google_storage_bucket_object.object.name
       }
     }
   }
@@ -436,6 +525,9 @@ resource "google_compute_region_instance_template" "webapp_instance_template" {
     boot         = var.webapp_instance_template.disk.boot
     disk_size_gb = var.compute_engine.boot_disk_size
     disk_type    = var.compute_engine.boot_disk_type
+    disk_encryption_key {
+      kms_key_self_link = google_kms_crypto_key.webapp_vm_crypto_key.id
+    }
 
   }
   reservation_affinity {
@@ -455,7 +547,7 @@ resource "google_compute_region_instance_template" "webapp_instance_template" {
     automatic_restart = var.webapp_instance_template.scheduling.automatic_restart
   }
 
-metadata = {
+  metadata = {
     startup-script = <<-EOT
 #!/bin/bash
 set -e
@@ -804,6 +896,8 @@ variable "roles" {
     artifact_registry_create_on_push_writer = string
     storage_object_admin_role               = string
     logs_writer_role                        = string
+
+    kms_crypto_key_encrypter_decrypter_role = string
   })
 }
 
@@ -1038,4 +1132,48 @@ variable "env_topic_verify_email" {
 variable "env_verify_email_expiry_milliseconds" {
   description = "The expiry time for email verification tokens."
   type        = number
+}
+
+variable "service_identity_account" {
+  description = "values for service identity account"
+  type = object({
+    service = string
+  })
+}
+
+variable "key_ring_name" {
+  description = "values for key ring name"
+  type = object({
+    length  = number
+    special = bool
+  })
+}
+
+variable "key_rotation_period" {
+  description = "values for key rotation period"
+  type        = string
+}
+
+variable "vm_binding_service_account" {
+  description = "values for vm binding service account"
+  type        = string
+}
+
+variable "storage_binding_service_account" {
+  description = "values for storage binding service account"
+  type        = string
+}
+
+variable "google_storage_bucket" {
+  description = "values for google storage bucket"
+  type = object({
+    name                     = string
+    force_destroy            = bool
+    public_access_prevention = string
+  })
+}
+
+variable "google_storage_bucket_object_zip" {
+  description = "values for google storage bucket object zip"
+  type        = string
 }
